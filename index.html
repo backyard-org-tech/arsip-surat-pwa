@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1f3d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arsip Surat">
+<title>Arsip Surat Elektronik</title>
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0f1f3d;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif; }
+  #shellFrame { position:fixed; inset:0; width:100%; height:100%; border:0; background:#0f1f3d; }
+
+  /* Splash sederhana saat iframe pertama kali memuat */
+  #splash {
+    position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#0f1f3d; z-index:50; transition:opacity .35s ease;
+  }
+  #splash img { width:88px; height:88px; border-radius:20px; margin-bottom:16px; }
+  #splash .title { color:#fff; font-weight:600; font-size:1.05rem; letter-spacing:.3px; }
+  #splash .sub { color:rgba(255,255,255,.55); font-size:.78rem; margin-top:6px; }
+  #splash .spin {
+    width:26px; height:26px; margin-top:22px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.2); border-top-color:#fbbf24;
+    animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #splash.hide { opacity:0; pointer-events:none; }
+
+  /* Banner instal (fallback jika beforeinstallprompt tidak fire otomatis) */
+  #installBanner {
+    position:fixed; left:12px; right:12px; bottom:12px; z-index:60;
+    background:#152a52; color:#fff; border-radius:14px; padding:12px 14px;
+    display:none; align-items:center; gap:10px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+    font-size:.82rem;
+  }
+  #installBanner.show { display:flex; }
+  #installBanner img { width:34px; height:34px; border-radius:9px; flex-shrink:0; }
+  #installBanner .txt { flex:1; line-height:1.3; }
+  #installBanner button {
+    background:#fbbf24; color:#0f1f3d; border:0; border-radius:8px; padding:7px 12px;
+    font-weight:600; font-size:.78rem; white-space:nowrap;
+  }
+  #installBanner .close { background:transparent; color:rgba(255,255,255,.6); padding:4px 6px; font-weight:400; }
+
+  #offlineBar {
+    position:fixed; top:0; left:0; right:0; z-index:70; background:#dc2626; color:#fff;
+    text-align:center; font-size:.75rem; padding:6px; display:none;
+  }
+  #offlineBar.show { display:block; }
+</style>
+</head>
+<body>
+
+<div id="offlineBar">📡 Tidak ada koneksi internet — sebagian fitur mungkin tidak berfungsi.</div>
+
+<div id="splash">
+  <img src="icons/icon-192.png" alt="Arsip Surat">
+  <div class="title">Arsip Surat Elektronik</div>
+  <div class="sub">Memuat aplikasi...</div>
+  <div class="spin"></div>
+</div>
+
+<div id="installBanner">
+  <img src="icons/icon-192.png" alt="">
+  <div class="txt"><strong>Instal aplikasi</strong><br>Akses lebih cepat dari layar utama HP.</div>
+  <button id="btnDoInstall">Instal</button>
+  <button class="close" id="btnCloseInstall">✕</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     GANTI URL DI BAWAH INI dengan URL deploy Apps Script Anda
+     (Deploy → Kelola Deployment → Web App URL, akan berakhiran /exec)
+     Parameter ?pwa=1 WAJIB ada — dipakai app di dalam iframe untuk
+     mendeteksi bahwa dirinya berjalan di dalam shell PWA ini.
+     ════════════════════════════════════════════════════════ -->
+<script>
+  window.GAS_EXEC_URL = 'https://script.google.com/macros/s/GANTI_DENGAN_ID_DEPLOYMENT_ANDA/exec';
+</script>
+
+<iframe id="shellFrame" title="Arsip Surat Elektronik" allow="camera; microphone; clipboard-write"></iframe>
+
+<!-- ════════════════════════════════════════════════════════
+     FIREBASE — untuk push notification (opsional).
+     Isi firebaseConfig & VAPID_KEY dari Firebase Console setelah
+     mengikuti panduan PWA_SETUP.md. Jika dikosongkan, aplikasi
+     tetap berjalan normal sebagai PWA installable — hanya tombol
+     lonceng notifikasi yang tidak aktif.
+     ════════════════════════════════════════════════════════ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var PWA_CHANNEL = 'ARSIP_SURAT_PWA_V1';
+  var VAPID_KEY = ''; // TODO: isi "Key pair" dari Firebase Console → Cloud Messaging → Web Push certificates
+
+  var firebaseConfig = {
+    // TODO: isi dari Firebase Console → Project Settings → General → Your apps → SDK setup
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: '',
+  };
+
+  var frame  = document.getElementById('shellFrame');
+  var splash = document.getElementById('splash');
+  var iframeReady = false;
+
+  // ── Muat app di dalam iframe, tandai ?pwa=1 ──
+  function buildFrameUrl() {
+    var url = window.GAS_EXEC_URL || '';
+    if (!url || url.indexOf('GANTI_DENGAN_ID_DEPLOYMENT_ANDA') > -1) return '';
+    return url + (url.indexOf('?') > -1 ? '&' : '?') + 'pwa=1';
+  }
+  var frameUrl = buildFrameUrl();
+  if (frameUrl) {
+    frame.src = frameUrl;
+  } else {
+    splash.querySelector('.sub').textContent = 'GAS_EXEC_URL belum dikonfigurasi. Lihat PWA_SETUP.md.';
+  }
+  frame.addEventListener('load', function () {
+    iframeReady = true;
+    setTimeout(function () { splash.classList.add('hide'); }, 250);
+  });
+
+  // ── Status online/offline ──
+  function updateOnlineStatus() {
+    document.getElementById('offlineBar').classList.toggle('show', !navigator.onLine);
+  }
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
+
+  // ── Registrasi Service Worker ──
+  var swRegistration = null;
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      swRegistration = reg;
+    }).catch(function (err) {
+      console.warn('SW gagal daftar:', err);
+    });
+  }
+
+  // ── Install prompt (native, Chrome/Edge/Android) ──
+  var deferredPrompt = null;
+  var banner = document.getElementById('installBanner');
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (!localStorage.getItem('pwaInstallDismissed')) banner.classList.add('show');
+  });
+  document.getElementById('btnDoInstall').addEventListener('click', function () {
+    banner.classList.remove('show');
+    if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; }
+  });
+  document.getElementById('btnCloseInstall').addEventListener('click', function () {
+    banner.classList.remove('show');
+    localStorage.setItem('pwaInstallDismissed', '1');
+  });
+  window.addEventListener('appinstalled', function () {
+    banner.classList.remove('show');
+  });
+
+  // ── Firebase Messaging (opsional) ──
+  var messaging = null;
+  var fcmReady = false;
+  try {
+    if (firebaseConfig.apiKey && window.firebase) {
+      firebase.initializeApp(firebaseConfig);
+      messaging = firebase.messaging();
+      fcmReady = true;
+      // Terima pesan foreground (saat app sedang dibuka aktif)
+      messaging.onMessage(function (payload) {
+        var n = payload.notification || {};
+        if (swRegistration) {
+          swRegistration.showNotification(n.title || 'Arsip Surat', {
+            body: n.body || '', icon: 'icons/icon-192.png', badge: 'icons/badge-96.png'
+          });
+        }
+      });
+    }
+  } catch (e) { console.warn('Firebase init gagal:', e); }
+
+  function postToFrame(msg) {
+    if (frame.contentWindow) frame.contentWindow.postMessage(msg, '*');
+  }
+
+  function subscribePush() {
+    if (!fcmReady || !VAPID_KEY) {
+      postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
+      return;
+    }
+    Notification.requestPermission().then(function (perm) {
+      if (perm !== 'granted') {
+        postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
+        return;
+      }
+      messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: swRegistration })
+        .then(function (token) {
+          if (token) postToFrame({ channel: PWA_CHANNEL, type: 'FCM_TOKEN', token: token });
+          else postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
+        })
+        .catch(function () { postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' }); });
+    });
+  }
+
+  function unsubscribePush() {
+    if (!fcmReady) return;
+    messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: swRegistration })
+      .then(function (token) {
+        if (token) return messaging.deleteToken();
+      })
+      .finally(function () { postToFrame({ channel: PWA_CHANNEL, type: 'UNSUBSCRIBED' }); });
+  }
+
+  // ── Jembatan pesan dari app (iframe) ──
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.channel !== PWA_CHANNEL) return;
+    if (d.type === 'SUBSCRIBE_PUSH') subscribePush();
+    if (d.type === 'UNSUBSCRIBE_PUSH') unsubscribePush();
+    if (d.type === 'LOGIN_READY' && fcmReady && Notification.permission === 'granted') {
+      // Sudah pernah izinkan sebelumnya → kirim ulang token otomatis tanpa perlu klik lonceng lagi
+      subscribePush();
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
