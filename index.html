@@ -194,9 +194,15 @@
     }
   } catch (e) { console.warn('Firebase init gagal:', e); }
 
+  var lastAppSource = null; // referensi window asli pengirim pesan dari app (bisa bersarang dalam)
+
   function postToFrame(msg) {
     console.log('[PWA] Kirim ke app:', msg);
-    if (frame.contentWindow) frame.contentWindow.postMessage(msg, '*');
+    if (lastAppSource) {
+      lastAppSource.postMessage(msg, '*');
+    } else if (frame.contentWindow) {
+      frame.contentWindow.postMessage(msg, '*'); // fallback, kemungkinan tidak sampai jika app bersarang dalam
+    }
   }
 
   function subscribePush() {
@@ -244,6 +250,7 @@
     var d = e.data;
     if (!d || d.channel !== PWA_CHANNEL) return;
     console.log('[PWA] Pesan diterima dari app:', d);
+    lastAppSource = e.source; // simpan referensi asli pengirim, dipakai postToFrame() untuk membalas
     if (d.type === 'SUBSCRIBE_PUSH') subscribePush();
     if (d.type === 'UNSUBSCRIBE_PUSH') unsubscribePush();
     if (d.type === 'LOGIN_READY' && fcmReady && Notification.permission === 'granted') {
