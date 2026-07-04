@@ -195,34 +195,47 @@
   } catch (e) { console.warn('Firebase init gagal:', e); }
 
   function postToFrame(msg) {
+    console.log('[PWA] Kirim ke app:', msg);
     if (frame.contentWindow) frame.contentWindow.postMessage(msg, '*');
   }
 
   function subscribePush() {
+    console.log('[PWA] subscribePush() dipanggil. fcmReady=', fcmReady, 'VAPID_KEY diisi?', !!VAPID_KEY);
     if (!fcmReady || !VAPID_KEY) {
       postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
       return;
     }
     Notification.requestPermission().then(function (perm) {
+      console.log('[PWA] Notification.permission =', perm);
       if (perm !== 'granted') {
         postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
         return;
       }
-      messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: swRegistration })
+      navigator.serviceWorker.ready.then(function (reg) {
+        console.log('[PWA] Service worker siap, scope:', reg.scope, '— memanggil getToken...');
+        return messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+      })
         .then(function (token) {
+          console.log('[PWA] getToken SUKSES:', token);
           if (token) postToFrame({ channel: PWA_CHANNEL, type: 'FCM_TOKEN', token: token });
           else postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
         })
-        .catch(function () { postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' }); });
+        .catch(function (err) {
+          console.error('[PWA] getToken GAGAL:', err);
+          postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
+        });
     });
   }
 
   function unsubscribePush() {
     if (!fcmReady) return;
-    messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: swRegistration })
+    navigator.serviceWorker.ready.then(function (reg) {
+      return messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    })
       .then(function (token) {
         if (token) return messaging.deleteToken();
       })
+      .catch(function (err) { console.error('[PWA] unsubscribe error:', err); })
       .finally(function () { postToFrame({ channel: PWA_CHANNEL, type: 'UNSUBSCRIBED' }); });
   }
 
@@ -230,6 +243,7 @@
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || d.channel !== PWA_CHANNEL) return;
+    console.log('[PWA] Pesan diterima dari app:', d);
     if (d.type === 'SUBSCRIBE_PUSH') subscribePush();
     if (d.type === 'UNSUBSCRIBE_PUSH') unsubscribePush();
     if (d.type === 'LOGIN_READY' && fcmReady && Notification.permission === 'granted') {
