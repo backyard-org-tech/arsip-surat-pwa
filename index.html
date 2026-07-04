@@ -83,7 +83,7 @@
      mendeteksi bahwa dirinya berjalan di dalam shell PWA ini.
      ════════════════════════════════════════════════════════ -->
 <script>
-  window.GAS_EXEC_URL = 'https://script.google.com/macros/s/AKfycbxsJvrpt1KsApcntQdzJDozYHAnFiKJA51aBKM-gn6lj_IzVqKkTJQLn1bRzJmVxgCb/exec';
+  window.GAS_EXEC_URL = 'https://script.google.com/macros/s/GANTI_DENGAN_ID_DEPLOYMENT_ANDA/exec';
 </script>
 
 <iframe id="shellFrame" title="Arsip Surat Elektronik" allow="camera; microphone; clipboard-write"></iframe>
@@ -106,13 +106,12 @@
   var VAPID_KEY = ''; // TODO: isi "Key pair" dari Firebase Console → Cloud Messaging → Web Push certificates
 
   var firebaseConfig = {
-    // TODO: isi dari Firebase Console → Project Settings → General → Your apps → SDK setup
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: '',
+    apiKey: 'AIzaSyBKaxL8dPmicLq6V0jZsxAztD68sjwq6tY',
+    authDomain: 'arsip-surat-notif.firebaseapp.com',
+    projectId: 'arsip-surat-notif',
+    storageBucket: 'arsip-surat-notif.firebasestorage.app',
+    messagingSenderId: '120957066729',
+    appId: '1:120957066729:web:b4aa21d01c185f7e6a3f78',
   };
 
   var frame  = document.getElementById('shellFrame');
