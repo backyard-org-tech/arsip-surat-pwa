@@ -197,42 +197,33 @@
   var lastAppSource = null; // referensi window asli pengirim pesan dari app (bisa bersarang dalam)
 
   function postToFrame(msg) {
-    console.log('[PWA] Kirim ke app:', msg, '| lastAppSource tersedia?', !!lastAppSource);
     if (lastAppSource) {
-      try {
-        lastAppSource.postMessage(msg, '*');
-        console.log('[PWA] postMessage ke lastAppSource berhasil dipanggil (bukan jaminan diterima)');
-      } catch (errPost) {
-        console.error('[PWA] postMessage ke lastAppSource GAGAL:', errPost);
-      }
+      try { lastAppSource.postMessage(msg, '*'); }
+      catch (errPost) { console.error('[PWA] Gagal kirim balik ke app:', errPost); }
     } else if (frame.contentWindow) {
-      frame.contentWindow.postMessage(msg, '*'); // fallback, kemungkinan tidak sampai jika app bersarang dalam
+      frame.contentWindow.postMessage(msg, '*'); // fallback
     }
   }
 
   function subscribePush() {
-    console.log('[PWA] subscribePush() dipanggil. fcmReady=', fcmReady, 'VAPID_KEY diisi?', !!VAPID_KEY);
     if (!fcmReady || !VAPID_KEY) {
       postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
       return;
     }
     Notification.requestPermission().then(function (perm) {
-      console.log('[PWA] Notification.permission =', perm);
       if (perm !== 'granted') {
         postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
         return;
       }
       navigator.serviceWorker.ready.then(function (reg) {
-        console.log('[PWA] Service worker siap, scope:', reg.scope, '— memanggil getToken...');
         return messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
       })
         .then(function (token) {
-          console.log('[PWA] getToken SUKSES:', token);
           if (token) postToFrame({ channel: PWA_CHANNEL, type: 'FCM_TOKEN', token: token });
           else postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
         })
         .catch(function (err) {
-          console.error('[PWA] getToken GAGAL:', err);
+          console.error('[PWA] getToken gagal:', err);
           postToFrame({ channel: PWA_CHANNEL, type: 'PERMISSION_DENIED' });
         });
     });
@@ -254,8 +245,7 @@
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || d.channel !== PWA_CHANNEL) return;
-    console.log('[PWA] Pesan diterima dari app:', d, '| e.source valid?', !!e.source, '| e.source === frame.contentWindow?', e.source === frame.contentWindow);
-    lastAppSource = e.source; // simpan referensi asli pengirim, dipakai postToFrame() untuk membalas
+    lastAppSource = e.source; // simpan referensi asli pengirim (bisa bersarang dalam beberapa iframe) untuk membalas via postToFrame()
     if (d.type === 'SUBSCRIBE_PUSH') subscribePush();
     if (d.type === 'UNSUBSCRIBE_PUSH') unsubscribePush();
     if (d.type === 'LOGIN_READY' && fcmReady && Notification.permission === 'granted') {
