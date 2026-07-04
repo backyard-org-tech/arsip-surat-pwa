@@ -197,9 +197,14 @@
   var lastAppSource = null; // referensi window asli pengirim pesan dari app (bisa bersarang dalam)
 
   function postToFrame(msg) {
-    console.log('[PWA] Kirim ke app:', msg);
+    console.log('[PWA] Kirim ke app:', msg, '| lastAppSource tersedia?', !!lastAppSource);
     if (lastAppSource) {
-      lastAppSource.postMessage(msg, '*');
+      try {
+        lastAppSource.postMessage(msg, '*');
+        console.log('[PWA] postMessage ke lastAppSource berhasil dipanggil (bukan jaminan diterima)');
+      } catch (errPost) {
+        console.error('[PWA] postMessage ke lastAppSource GAGAL:', errPost);
+      }
     } else if (frame.contentWindow) {
       frame.contentWindow.postMessage(msg, '*'); // fallback, kemungkinan tidak sampai jika app bersarang dalam
     }
@@ -249,7 +254,7 @@
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || d.channel !== PWA_CHANNEL) return;
-    console.log('[PWA] Pesan diterima dari app:', d);
+    console.log('[PWA] Pesan diterima dari app:', d, '| e.source valid?', !!e.source, '| e.source === frame.contentWindow?', e.source === frame.contentWindow);
     lastAppSource = e.source; // simpan referensi asli pengirim, dipakai postToFrame() untuk membalas
     if (d.type === 'SUBSCRIBE_PUSH') subscribePush();
     if (d.type === 'UNSUBSCRIBE_PUSH') unsubscribePush();
