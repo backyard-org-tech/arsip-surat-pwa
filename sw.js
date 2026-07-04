@@ -7,10 +7,8 @@
 //  memberi splash/offline-fallback yang layak saat sinyal jelek.
 // ════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'arsip-surat-shell-v1';
+const CACHE_NAME = 'arsip-surat-shell-v2';
 const SHELL_ASSETS = [
-  './',
-  './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -32,12 +30,27 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Cache-first hanya untuk aset shell sendiri (origin ini). Request lain
-// (mis. ke script.google.com di dalam iframe) dibiarkan lewat langsung
-// ke jaringan — tidak diintervensi SW ini sama sekali.
+// index.html/halaman utama SELALU diambil dari jaringan dulu (network-first) —
+// supaya update kode langsung aktif tanpa perlu clear cache manual. Fallback
+// ke cache hanya kalau benar-benar offline.
+// Aset statis (ikon, manifest) tetap cache-first karena jarang berubah.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
+  const isAppShellDoc = event.request.mode === 'navigate' ||
+    url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
+
+  if (isAppShellDoc) {
+    event.respondWith(
+      fetch(event.request).then((res) => {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return res;
+      }).catch(() => caches.match(event.request).then((c) => c || caches.match('./index.html')))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
